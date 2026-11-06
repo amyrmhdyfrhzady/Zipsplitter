@@ -1,0 +1,72 @@
+name: FileSplitter - Process
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Unique request ID (job_ + UUID recommended)
+        required: true
+        type: string
+      source_type:
+        description: Input source type
+        required: true
+        type: choice
+        options:
+          - url
+          - release_asset
+      source_url:
+        description: Direct HTTP(S) URL (source_type=url)
+        required: false
+        type: string
+      input_release_id:
+        description: Draft input Release ID (source_type=release_asset)
+        required: false
+        type: string
+      input_asset_id:
+        description: Input Release Asset ID (source_type=release_asset)
+        required: false
+        type: string
+      filename:
+        description: Desired original filename, including extension
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: filesplit-${{ inputs.job_id }}
+  cancel-in-progress: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      FS_JOB_ID: ${{ inputs.job_id }}
+      FS_SOURCE_TYPE: ${{ inputs.source_type }}
+      FS_SOURCE_URL: ${{ inputs.source_url }}
+      FS_INPUT_RELEASE_ID: ${{ inputs.input_release_id }}
+      FS_INPUT_ASSET_ID: ${{ inputs.input_asset_id }}
+      FS_FILENAME: ${{ inputs.filename }}
+      FS_MAX_INPUT_BYTES: ${{ vars.FILESPLITTER_MAX_INPUT_BYTES || '1900000000' }}
+      FS_PART_SIZE: '19922944'
+    steps:
+      - name: Check out project
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Process input and publish Release assets
+        run: python -m filesplitter.process
